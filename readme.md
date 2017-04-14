@@ -1,14 +1,25 @@
-# UiO-Bot
+#UiO-Bot
+
+## How to run
+
+To run the script simply do the following:
+
+> python bot.py
+
+This should set up everything needed to run the script :)
 
 
-## Layout
+
+## Layout of program
 
 We got a module based bot with an controller so that it is easy to swap out single pieces when needed.
 
 Currently we got the following:
 
-* map_manager 
-* map_object
+* MapManager 
+* MapObject
+    * Tile
+    * Enemy
 * Controller
 * Parser
 * Decicion_maker
@@ -28,3 +39,4 @@ Nothing really, just dumps a string to JSON atm
 
 ### Decicion_maker
 The actual decicion maker. For example if we figure we want to stick to a plan for a couple of ticks this is the brain that would make the desicion
+
