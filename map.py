@@ -288,8 +288,7 @@ class MapManager:
                     #print("Adding node")
                     queue.append(n.point)
 
-        raise ValueError("There is no valid path to the destination. Map might be broken")
-
+        return []
     def create_plan(self, clusters):
         """
         Creates a plan
@@ -415,9 +414,6 @@ class Tile(MapObject):
             self.passable = True
             self.value = 9
             self.cost = 1
-
-        else:
-            raise ValueError(char)
 
 
 class Enemy(MapObject):

@@ -161,6 +161,9 @@ class Controller:
         print("Implement something to fiddle with your death data.")
 
     def use_plan(self):
+        if (len(self.plan) < 2):
+            self.plan = None
+            return
         path, ticks = self.plan
         print("Using plan for the next {} ticks".format(ticks))
         print("Len of plan: {}".format(str(len(path))))
