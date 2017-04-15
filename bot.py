@@ -6,7 +6,7 @@ import json
 import socket
 from time import sleep
 from map import MapManager
-
+from naya import json as jstream
 
 class Controller:
     def __init__(self, target='localhost'):
@@ -66,29 +66,51 @@ class Controller:
         except Exception as e:
             print(e)
 
+    def fetch_json(self):
+        print("Fetching json")
+        data = self.s.recv(1400)
+        print(data)
+
+        jsons = []
+        messages = data.splitlines()
+
+        print(messages)
+        extra_buffer = ''
+        for msg in messages:
+            print(msg)
+            try:
+                state = json.loads(extra_buffer + msg.decode('utf-8'))
+                jsons.append(state)
+                extra_buffer = ''
+                jsons.append(state)
+                continue
+            except json.JSONDecodeError as error:
+                print(error.msg)
+                extra_buffer += msg.decode('utf-8')
+                pass
+
+            try:
+                state = json.loads(msg.decode('utf-8'))
+                jsons.append(state)
+                extra_buffer = ''
+                jsons.append(state)
+                continue
+
+            except json.JSONDecodeError as error:
+                print(error.msg)
+                extra_buffer += msg.decode('utf-8')
+                pass
+
+        return jsons
+
     def run(self):
         extra_buffer = ''
+
         while True:
             print("Loop start")
-            data = self.s.recv(1500)
-            print(data)
 
-            jsons = []
-            messages = data.splitlines()
-
-            # print(messages)
-            for msg in messages:
-                try:
-                    state = json.loads(extra_buffer + msg.decode('utf-8'))
-                    jsons.append(state)
-                    extra_buffer = ''
-                except json.JSONDecodeError as error:
-                    print(error.msg)
-                    extra_buffer += msg.decode('utf-8')
-                    pass
-                    break
-
-            for json_str in jsons:
+            jsons = self.fetch_json()
+            for json_str in jsons :
                 self.decide(json_str)
 
     def decide(self, state_object):
@@ -123,15 +145,13 @@ class Controller:
         :param state_object:
         :return:
         """
-        if self.plan:
-            self.use_plan()
-            return
 
         self.mm.set_map(state_object)
-        self.mm.print_map()
+        # self.mm.print_map()
         self.mm.set_players(state_object)
         clusters = self.mm.generate_heat_map()
         self.plan = self.mm.create_plan(clusters)
+        self.use_plan()
 
     def welcome(self):
         print("Sending Bot Name")

@@ -24,9 +24,9 @@ class MapManager:
         for line in self.map:
             for tile in line:
                 if tile.current_shortest < 100000:
-                    print(tile.current_shortest, end='')
+                    print("{:^2}".format(str(tile.current_shortest)), end='')
                 else:
-                    print(tile, end='')
+                    print("{:^2}".format(str(tile)), end='')
 
             print('')
 
@@ -50,41 +50,93 @@ class MapManager:
         height = len(self.map)
         width = len(self.map[0])
 
-        tiles = [self.get_tile((x + 1) % width, (y + 0) % height), self.get_tile((x - 1) % width, (y - 0) % height),
-                 self.get_tile((x + 0) % width, (y + 1) % height), self.get_tile((x - 0) % width, (y - 1) % height)]
+        tiles = [self.get_tile((x + 1) % width, (y + 0) % height),
+                 self.get_tile((x - 1) % width, (y - 0) % height),
+                 self.get_tile((x + 0) % width, (y + 1) % height),
+                 self.get_tile((x - 0) % width, (y - 1) % height)]
         shuffle(tiles)
         return tiles
 
-    def get_walkable_neighbors(self, x, y):
+    def get_walkable_neighbors(self, x, y, check_visit = False):
         tiles = self.get_neighbors(x, y)
 
         temp = []
         for tile in tiles:
+            if check_visit and tile.visited:
+                continue
             if tile.passable:
                 temp.append(tile)
 
         return temp
 
-    def filter_enemy_grab(self):
-        # TODO: Add a way to filter pellets from enemies
-        pass
+    def reduce_tile_by_enemies(self,clusters, init_reduction = 0.8,reduction_delta = 0):
+        print("Reducing values")
+        """
+        Filter / fixes the score for tiles in close proximity to an enemy, so that we don't case after an other ghosts clusters for no reason.
+        It does this by doing an limited width search search and reduce the value of nodes close to the enemy.
+        :return:
+        """
+
+        def reduce_values(point,dist_left, reduction, reduction_delta):
+            if dist_left == 0:
+                return
+
+            x,y = point
+            tile = self.get_tile(x,y)
+            if tile.reduced:
+                return
+
+            tile.reduced = True
+            tile.value = max(0,tile.value - reduction)
+
+            # God fuck. How 2 maek pretty plz?
+            reduce_values(((x + 1) % width,(y + 1) % height), dist_left - 1, reduction-reduction_delta,reduction_delta)
+            reduce_values(((x + 1) % width,(y - 1) % height), dist_left - 1, reduction-reduction_delta,reduction_delta)
+            reduce_values(((x - 1) % width,(y + 1) % height), dist_left - 1, reduction-reduction_delta,reduction_delta)
+            reduce_values(((x - 1) % width,(y - 1) % height), dist_left - 1, reduction-reduction_delta,reduction_delta)
+
+        height = len(self.map)
+        width = len(self.map[0])
+
+        x_player = self.you.get('x')
+        y_player = self.you.get('y')
+        player_point = (x_player,y_player)
+
+        prune = math.floor(len(clusters)/3)
+        clusters = clusters[0:prune]
+
+        for enemy in self.others:
+            x = enemy.get('x')
+            y = enemy.get('y')
+            enemy_point = (x,y)
+            for cluster in clusters:
+                dist_enemy = len(self.shortest_path(enemy_point,cluster))
+                dist_player = len(self.shortest_path(player_point,cluster))
+
+
+                if dist_enemy < dist_player: # The enemy is closer than us. The cluster thus loses value
+                    reduce_values(enemy_point,dist_player,init_reduction,reduction_delta)
 
     def sort_clusters(self, clusters):
         """
         Takes an list of clusters and sorts them based on highest value.
         :param clusters: A list of
-        :return:
         """
+        return sorted(clusters,key = self.calculate_cluster_value,reverse=True)
 
     def calculate_cluster_value(self, cluster):
         # TODO: Figure out the value of clusters and sort them accordingly
-
+        x,y = self.you.get('x'), self.you.get('y')
+        player_dist = len(self.shortest_path((x,y),cluster))
+        self.reset_map()
         total = 0
-        for tile in cluster:
-            total += tile.value
-        return total
+        for point in cluster:
+            tile = self.get_tile(point[0],point[1])
+            total += tile.get_value()
+        return total + (8 - max(player_dist,0))
 
     def find_clusters(self, value_map):
+        print("Finding clusters")
         """
         Will try to find clusters of pellets
         Returns a list of coordinates
@@ -110,6 +162,7 @@ class MapManager:
             for y, line in enumerate(temp_map):
                 for x, tile in enumerate(line):
                     if tile > 0:
+                        temp_map[y][x] = 0
                         return x, y
             return None
 
@@ -120,6 +173,7 @@ class MapManager:
                 current_cluster = []
                 point = get_next_pellet()
                 if point is None:  # There is no more untaken pellets
+                    print('Done')
                     return clusters
 
                 queue.append(point)
@@ -149,8 +203,9 @@ class MapManager:
         temp_map = value_map[:]
         height = len(temp_map)
         width = len(temp_map[0])
-
-        return cluster_entry()
+        clusters = cluster_entry()
+        print(len(clusters))
+        return clusters
 
     def generate_heat_map(self):
         print("Heatmapping")
@@ -168,22 +223,24 @@ class MapManager:
 
         clusters = self.find_clusters(heatmap)
 
-        print("Filter those that the enemy will get first")
+        clusters = self.sort_clusters(clusters)
+        self.reduce_tile_by_enemies(clusters)
+
+        for cluster in clusters:
+            print(self.calculate_cluster_value(cluster))
 
         return clusters
 
-        raise NotImplementedError("Do something with the cluster")
 
-        pass
-
-    def shortest_path(self, point_from, point_to_lst, num=1):
+    def shortest_path(self, point_from, point_to_lst, num=1, enemy = False):
         """
         :param point_to_lst: A list of points we are looking for
         :param point_from: The point we are going from
         :param num: A number of nodes to return.
         :return: the shortest path to the target location
         """
-        print("Shortest path")
+        #print("Shortest path")
+
 
         def point_in_list(point, lst):
             for p in lst:
@@ -191,26 +248,34 @@ class MapManager:
                     return True
             return False
 
+        self.reset_map()
+
         temp_map = self.map[:]
         queue = deque()
         queue.append(point_from)
         x, y = point_from
-        tile = self.get_tile(x, y)
+        tile = self.get_tile(x, y, temp_map)
         tile.current_shortest = 0
+
+        if enemy:
+            x, y = point_to_lst
+            tile = self.get_tile(x, y)
+            tile.passable = True
 
         while len(queue):
             # self.print_map()
-            print("Queue")
             x, y = queue.popleft()
             tile = self.get_tile(x, y)
             tile.visited = True
 
             if point_in_list((x, y), point_to_lst):
-                print("Target found")
                 tile.current_path.append(tile)
+
+                self.reset_map()
+
                 return tile.current_path
 
-            next_nodes = self.get_walkable_neighbors(x, y)
+            next_nodes = self.get_walkable_neighbors(x, y, check_visit=False)
 
             # Lets do some dijkstra bullshit
             for n in next_nodes:
@@ -219,11 +284,10 @@ class MapManager:
                     n.current_path = tile.current_path[:]
                     n.current_path.append(tile)
 
-                    print("Current path for next node: ", n.current_path)
-                    print("Adding node")
+                    #print("Current path for next node: ", n.current_path)
+                    #print("Adding node")
                     queue.append(n.point)
 
-        return None
         raise ValueError("There is no valid path to the destination. Map might be broken")
 
     def create_plan(self, clusters):
@@ -232,17 +296,15 @@ class MapManager:
         :param clusters: The clusters we are going to use for a base of the next plan.
         :return: A plan: IE, a path to follow for the next X number of ticks. X should be something like 1/2 of the fastest way to the closest cluster
         """
-
-        print("Creating simple plan, make something better")
-        # TODO: Add clusterfiltering here
         you_x = self.you.get('x')
         you_y = self.you.get('y')
-        plan = self.shortest_path((you_x, you_y), clusters[0])
+        plan  = self.shortest_path((you_x, you_y), clusters[0])
 
-        return plan, math.floor(len(plan) / 4) + 1
+        return plan,3
 
     def set_map(self, state_object):
-        print("Setting map")
+        # print("Setting map")
+        self.state_object = state_object
         gamestate = state_object.get('gamestate')
         map_obj = gamestate.get('map')
         map_content = map_obj['content']
@@ -287,7 +349,11 @@ class MapManager:
         tile = Tile(char, point)
         return tile
 
+    def reset_map(self):
+        self.set_map(self.state_object)
+
     def __init__(self):
+        self.state_object = None
         self.map = []
         self.others = None
         self.you = None
@@ -304,6 +370,7 @@ class MapObject:
         self.point = point
         self.current_shortest = 100000
         self.current_path = []
+        self.reduced = False
 
     def __str__(self):
         return self.content
@@ -348,6 +415,9 @@ class Tile(MapObject):
             self.passable = True
             self.value = 9
             self.cost = 1
+
+        else:
+            raise ValueError(char)
 
 
 class Enemy(MapObject):
